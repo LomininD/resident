@@ -11,11 +11,11 @@ org 100h
 
 locals @@
 
-activation_key_scan_code = 15
-frame_height 		 = 17		; height of frame
-frame_width		 = 11		; width of frame
-frame_x			 = 0		; coords counted from top left corner
-frame_y			 = 0		; coords of frame = coords of frame
+activation_key_scan_code = 15d
+frame_height = 17			; height of frame
+frame_width = 11 			; width of frame
+frame_x	 = 0				; coords counted from top left corner
+frame_y	 = 0				; coords of frame = coords of frame
 					; top left corner
 
 
@@ -44,25 +44,6 @@ Start:
 		call SetHandler		; replaces existing 09 int handler addr 
 
 
-		push 0b800h
-		pop es
-
-		mov si, (80d * frame_y + frame_x) * 2
-		mov di, offset SaveBuffer
-		push si
-		call LoadBuffer		; initializes save buffer before drawing 
-		pop si
-
-		call ClearScreen
-
-		mov ax, 0100h		; waits for any key to be pressed
-		int 21h
-
-		mov di, (80d * frame_y + frame_x) * 2
-		mov si, offset SaveBuffer
-		push di
-		call FlushBuffer
-		pop di
 
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
@@ -90,18 +71,15 @@ DrawBuffer	dw frame_height dup(frame_width dup(0))
 
 ClearScreen	proc
 
-		push ax			; saves all used registers
 		push cx
 		push di
 
 		xor di, di		; of video memory
-		mov ax, 0		; blank symbol on black bg
 		mov cx, 80 * 25		; symbols in video page
 		rep stosw
 
 		pop di			; restores used registers values
 		pop cx
-		pop ax
 
 		ret
 		endp
@@ -173,21 +151,9 @@ ResidentMain	proc
 		push di
 		call FlushBuffer
 		pop di
-
-		mov ax, 0000h
-		mov es:[di], ax
 		mov FrameDisplay, 0
 
 @@Ret:
-; 		in al, 61h		; basic householding is not needed as we
-; 		or al, 80h		; redirect to old handler that already
-; 		out 61h, al		; has it
-; 		and al, not 80h
-; 		out 61h, al
-; 
-; 		mov al, 20h
-; 		out 20h, al
-
 		pop es si ax
 
 		db 0eah			; will be translated to jmp
@@ -280,6 +246,7 @@ LoadBuffer	proc
 		mov cx, frame_width
 		rep movsw
 		add si, 80*2
+		sub si, frame_width * 2
 		pop cx
 		loop @@CopyLoop
 
@@ -318,6 +285,7 @@ FlushBuffer	proc
 		mov cx, frame_width
 		rep movsw
 		add di, 80*2
+		sub di, frame_width * 2
 		pop cx
 		loop @@CopyLoop
 
