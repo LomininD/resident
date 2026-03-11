@@ -14,6 +14,9 @@ locals @@
 activation_key_scan_code = 15
 frame_height 		 = 17		; height of frame
 frame_width		 = 11		; width of frame
+frame_x			 = 0		; coords counted from top left corner
+frame_y			 = 0		; coords of frame = coords of frame
+					; top left corner
 
 
 
@@ -36,11 +39,30 @@ Start:
 		mov ax, offset TripleBuffering	     ; at seg 0000h offs 4*09h
 		call SetHandler		; intercepts timer with triple buffering 
 
-		mov bx, 4*09h		; address of 08 int handler is located
+		mov bx, 4*09h		; address of 09 int handler is located
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
 		call SetHandler		; replaces existing 09 int handler addr 
 
 
+		push 0b800h
+		pop es
+
+		mov si, (80d * frame_y + frame_x) * 2
+		mov di, offset SaveBuffer
+		push si
+		call LoadBuffer		; initializes save buffer before drawing 
+		pop si
+
+		call ClearScreen
+
+		mov ax, 0100h		; waits for any key to be pressed
+		int 21h
+
+		mov di, (80d * frame_y + frame_x) * 2
+		mov si, offset SaveBuffer
+		push di
+		call FlushBuffer
+		pop di
 
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
@@ -54,6 +76,35 @@ Start:
 FrameDisplay	db 0			; 0 - if frame not shown, 1 - overwise
 SaveBuffer	dw frame_height dup(frame_width dup(0))
 DrawBuffer	dw frame_height dup(frame_width dup(0))
+
+
+;===============================================================================
+; ClearScreen
+;
+; Dumps empty chars in video memory page
+; Entry:     ES -> video mem segment
+; Exit:      -
+; Expected:  -
+; Destroyed: AX, CX, DI (all regs saved)
+;-------------------------------------------------------------------------------
+
+ClearScreen	proc
+
+		push ax			; saves all used registers
+		push cx
+		push di
+
+		xor di, di		; of video memory
+		mov ax, 0		; blank symbol on black bg
+		mov cx, 80 * 25		; symbols in video page
+		rep stosw
+
+		pop di			; restores used registers values
+		pop cx
+		pop ax
+
+		ret
+		endp
 
 ;===============================================================================
 ; SetHandler
@@ -91,7 +142,7 @@ SetHandler	proc
 ResidentMain	proc
 
 
-		push ax bx es		; think about flags
+		push ax si es		; think about flags
 
 		call CmpKeystroke
 		cmp al, 1
@@ -100,24 +151,35 @@ ResidentMain	proc
 		cmp FrameDisplay, 1	; decides to open or close frame
 		je @@CloseFrame
 
-		push 0b800h		; open frame
+@@OpenFrame:
+		push 0b800h
 		pop es
-		mov bx, (80d * 5 + 40d) * 2
+		mov si, (80d * frame_y + frame_x) * 2
+		mov di, offset SaveBuffer
+		push si
+		call LoadBuffer		; initializes save buffer before drawing 
+		pop si
+
 		mov ax, 4e03h
-		mov es:[bx], ax
+		mov es:[si], ax
 		mov FrameDisplay, 1
 		jmp @@Ret
 
-@@CloseFrame:				; close frame
+@@CloseFrame:
 		push 0b800h
 		pop es
-		mov bx, (80d * 5 + 40d) * 2
+		mov di, (80d * frame_y + frame_x) * 2
+		mov si, offset SaveBuffer
+		push di
+		call FlushBuffer
+		pop di
+
 		mov ax, 0000h
-		mov es:[bx], ax
+		mov es:[di], ax
 		mov FrameDisplay, 0
 
 @@Ret:
-; 		in al, 61h		; basic householding not needed as we
+; 		in al, 61h		; basic householding is not needed as we
 ; 		or al, 80h		; redirect to old handler that already
 ; 		out 61h, al		; has it
 ; 		and al, not 80h
@@ -126,7 +188,7 @@ ResidentMain	proc
 ; 		mov al, 20h
 ; 		out 20h, al
 
-		pop es bx ax
+		pop es si ax
 
 		db 0eah			; will be translated to jmp
 Old09Offset:	dw 0000h		; this part will be modificated
@@ -152,7 +214,6 @@ CmpKeystroke	proc
 		cmp al, activation_key_scan_code
 		je @@IsActKey
 		jmp @@WrongComb
-		;jne @@WrongComb
 
 @@IsActKey:				; checking for control+shift pressed
 		mov ah, 02h
@@ -188,6 +249,85 @@ Old08Seg:	dw 0000h		; to jmp OldSeg:OldOffset
 
 		iret
 		endp
+
+;===============================================================================
+; LoadBuffer
+;
+; Loads ES:SI of area for frame to DS:DI (buffer location)
+; Entry:     ES - video memory segment
+;	     SI - coordinates of top left corner of frame
+;	     DS - data segment
+;	     DI - buffer offset
+; Exit:      -
+; Expected:  -
+; Destroyed: DI, SI, CX
+;-------------------------------------------------------------------------------
+
+LoadBuffer	proc
+
+		cli
+
+		push ds			; swaps ds and es 
+		push es
+		pop ds
+		pop es
+
+		cld
+		mov cx, frame_height
+
+@@CopyLoop:				; copies frame area to dedicated buffer 
+		push cx
+		mov cx, frame_width
+		rep movsw
+		add si, 80*2
+		pop cx
+		loop @@CopyLoop
+
+		push ds
+		push es
+		pop ds
+		pop es
+
+		sti
+
+		ret
+		endp
+
+;===============================================================================
+; FlushBuffer
+;
+; Flushes buffer located on DS:SI buffer to ES:DI (frame area)
+; Entry:     ES - video memory segment
+;	     DI - coordinates of top left corner of frame
+;	     DS - data segment
+;	     SI - buffer offset
+; Exit:      -
+; Expected:  -
+; Destroyed: DI, SI, CX
+;-------------------------------------------------------------------------------
+
+FlushBuffer	proc
+
+		cli
+
+		cld
+		mov cx, frame_height
+
+@@CopyLoop:				; buffer data to frame area
+		push cx
+		mov cx, frame_width
+		rep movsw
+		add di, 80*2
+		pop cx
+		loop @@CopyLoop
+
+		sti
+
+		ret
+		endp
+
+
+
 
 EndOfProg:
 end 		Start
