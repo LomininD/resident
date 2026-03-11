@@ -12,50 +12,71 @@ org 100h
 locals @@
 
 activation_key_scan_code = 15
+frame_height 		 = 17		; height of frame
+frame_width		 = 11		; width of frame
+
+
 
 Start:
 		mov ax, 3508h		; get address of 08 int handler in es:bx 
 		int 21h
 		mov word ptr Old08Offset, bx
-		mov bx, es
-		mov word ptr Old08Seg, bx
+		mov word ptr Old08Seg, es
 
 		mov ax, 3509h		; get address of 09 int handler in es:bx 
 		int 21h
 		mov word ptr Old09Offset, bx
-		mov bx, es
-		mov word ptr Old09Seg, bx
+		mov word ptr Old09Seg, es
 
-		; NEW FUNCTION
 
 		xor ax, ax
 		mov es, ax
-		mov bx, 4*08h		; address of 08 int handler is located at 
-					; seg 0000h offs 4*09h
-		cli			; intercepts timer with triple buffering 
-		mov es:[bx], offset TripleBuffering
-		mov ax, cs
-		mov es:[bx+2], ax
-		sti
 
-		mov bx, 4*09h		; address of 08 int handler is located at 
-					; seg 0000h offs 4*09h
-		cli			; replaces existing 09 int handler addr 
-		mov es:[bx], offset ResidentMain	; with new one
-		mov ax, cs
-		mov es:[bx+2], ax
-		sti
+		mov bx, 4*08h		; address of 08 int handler is located 
+		mov ax, offset TripleBuffering	     ; at seg 0000h offs 4*09h
+		call SetHandler		; intercepts timer with triple buffering 
+
+		mov bx, 4*09h		; address of 08 int handler is located
+		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
+		call SetHandler		; replaces existing 09 int handler addr 
+
+
 
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
 		mov cl, 4
-		shr dx, cl		; dx stores memory in paragraphs	
-		inc dx
+		shr dx, cl	
+		inc dx			; dx stores memory in paragraphs
 		int 21h
 
+
+
 FrameDisplay	db 0			; 0 - if frame not shown, 1 - overwise
-SaveBuffer	dw 25 dup(80 dup(0))
-DrawBuffer	dw 25 dup(80 dup(0))
+SaveBuffer	dw frame_height dup(frame_width dup(0))
+DrawBuffer	dw frame_height dup(frame_width dup(0))
+
+;===============================================================================
+; SetHandler
+;
+; Replace old handler label located at ES:BX with new label located at CS:AX
+; Entry:     AX	- new handler offset
+;	     CS - new handler segment
+;	     BX - old handler offset
+;	     Es - old handler label
+; Exit:      -
+; Expected:  -
+; Destroyed: -
+;-------------------------------------------------------------------------------
+
+SetHandler	proc
+
+		cli
+		mov es:[bx], ax
+		mov es:[bx+2], cs
+		sti
+
+		ret
+		endp
 
 ;===============================================================================
 ; ResidentMain
@@ -160,8 +181,6 @@ CmpKeystroke	proc
 ;-------------------------------------------------------------------------------
 
 TripleBuffering	proc
-
-
 
 		db 0eah			; will be translated to jmp
 Old08Offset:	dw 0000h		; this part will be modificated
