@@ -44,6 +44,18 @@ Start:
 		call SetHandler		; replaces existing 09 int handler addr 
 
 
+		push ds
+		pop es
+		call DrawFrame
+
+		push 0b800h
+		pop es
+		mov di, (80d * frame_y + frame_x) * 2
+		mov si, offset DrawBuffer
+		push di
+		call FlushBuffer
+		pop di
+
 
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
@@ -55,34 +67,16 @@ Start:
 
 
 FrameDisplay	db 0			; 0 - if frame not shown, 1 - overwise
+Color_Attr	db 4eh			; color of frame
+FrameStyle	db 0cdh			; frame style arr
+		db 0bah
+		db 0c9h
+		db 0bbh
+		db 0c8h
+		db 0bch
 SaveBuffer	dw frame_height dup(frame_width dup(0))
 DrawBuffer	dw frame_height dup(frame_width dup(0))
 
-
-;===============================================================================
-; ClearScreen
-;
-; Dumps empty chars in video memory page
-; Entry:     ES -> video mem segment
-; Exit:      -
-; Expected:  -
-; Destroyed: AX, CX, DI (all regs saved)
-;-------------------------------------------------------------------------------
-
-ClearScreen	proc
-
-		push cx
-		push di
-
-		xor di, di		; of video memory
-		mov cx, 80 * 25		; symbols in video page
-		rep stosw
-
-		pop di			; restores used registers values
-		pop cx
-
-		ret
-		endp
 
 ;===============================================================================
 ; SetHandler
@@ -138,8 +132,18 @@ ResidentMain	proc
 		call LoadBuffer		; initializes save buffer before drawing 
 		pop si
 
-		mov ax, 4e03h
-		mov es:[si], ax
+		push ds
+		pop es
+		call DrawFrame
+
+		push 0b800h
+		pop es
+		mov di, (80d * frame_y + frame_x) * 2
+		mov si, offset DrawBuffer
+		push di
+		call FlushBuffer
+		pop di
+
 		mov FrameDisplay, 1
 		jmp @@Ret
 
@@ -294,6 +298,104 @@ FlushBuffer	proc
 		ret
 		endp
 
+
+;===============================================================================
+; DrawFrame
+;
+; Draws frame in buffer
+; Entry:     ES -> draw buffer segment
+;	     CS -> code segment
+; Exit:      -
+; Expected:  -
+; Destroyed: AX, BX, CX, DI, SI
+;-------------------------------------------------------------------------------
+
+DrawFrame	proc
+
+		mov bx, 0
+		mov di, offset DrawBuffer
+
+		call DrawHBorder
+
+		mov ah, Color_Attr
+		mov cx, frame_height
+		sub cx, 2
+
+@@Center:
+		push cx
+		call DrawEmptyLine
+		pop cx
+		loop @@Center
+
+		mov bx, 1		; bx = 1 for bottom border 
+		call DrawHBorder
+
+		ret
+		endp
+
+;===============================================================================
+; DrawHBorder
+;
+; Draws horizontal border in buffer
+; Entry:     ES -> draw buffer segment
+;	     BX -> 0 - top border, 1 - bottom border
+;	     DI -> buffer offset
+; Exit:      -
+; Expected:  -
+; Destroyed: AX, BX, CX, DI
+;-------------------------------------------------------------------------------
+
+DrawHBorder	proc
+
+		shl bx, 1		; modificates bx=0 -> bx=2  
+		add bx, 2		; 	      bx=1 -> bx=4
+
+		mov ah, Color_Attr
+		mov al, [FrameStyle + bx]
+		stosw
+
+		mov cx, frame_width
+		sub cx, 2
+		mov al, [FrameStyle]
+
+		rep stosw		; draws mid part of upper hor border
+
+		mov al, [FrameStyle + bx + 1]
+		stosw
+
+		ret
+		endp
+
+;===============================================================================
+; DrawEmptyLine 
+;
+; Draws empty line in frame
+; Entry:     ES -> video mem segment
+;	     DI -> line offset for frame border
+;	     AL -> frame symbol
+;	     CS -> code segment
+; Exit:      -
+; Expected:  -
+; Destroyed: AX, CX
+;-------------------------------------------------------------------------------
+
+DrawEmptyLine	proc
+
+		mov ah, Color_Attr
+		mov al, [FrameStyle + 1]
+		stosw			; draws part of right vert border
+
+		mov al, 00h
+		mov cx, frame_width
+		sub cx, 2
+
+		rep stosw		; fills with blank spaces
+
+		mov al, [FrameStyle + 1]
+		stosw			; draws part of right vert border
+
+		ret
+		endp
 
 
 
