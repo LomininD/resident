@@ -18,8 +18,6 @@ frame_x	 = 1				; coords counted from top left corner
 frame_y	 = 1				; coords of frame = coords of frame
 					; top left corner
 
-
-
 Start:	
 		mov ax, 3508h		; get address of 08 int handler in es:bx 
 		int 21h
@@ -44,10 +42,15 @@ Start:
 		call SetHandler		; replaces existing 09 int handler addr 
 
 
+
+
+
+
+
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
 		mov cl, 4
-		shr dx, cl	
+		shr dx, cl
 		inc dx			; dx stores memory in paragraphs
 		int 21h
 
@@ -95,13 +98,13 @@ SetHandler	proc
 ; Entry:     -
 ; Exit:      -
 ; Expected:  -
-; Destroyed: AX, 
+; Destroyed: AX, SI, ES, DS, CX, DI
 ;-------------------------------------------------------------------------------
 
 ResidentMain	proc
+		cli
 
-
-		push ax si es ds		; think about flags
+		push ax si es ds cx di		; think about flags
 
 		mov ax, cs
 		mov ds, ax
@@ -146,9 +149,13 @@ ResidentMain	proc
 		call FlushBuffer
 		pop di
 		mov FrameDisplay, 0
+		sti
+
 
 @@Ret:
-		pop ds es si ax
+		pop di cx ds es si ax
+
+		sti
 
 		db 0eah			; will be translated to jmp
 Old09Offset:	dw 0000h		; this part will be modificated
@@ -198,10 +205,23 @@ CmpKeystroke	proc
 ; Entry:     -
 ; Exit:      -
 ; Expected:  -
-; Destroyed: UPDATE
+; Destroyed: -
 ;-------------------------------------------------------------------------------
 
 TripleBuffering	proc
+
+		cli
+ 		push ax bx cx es ds si di
+
+		mov ax, cs
+		mov ds, ax
+
+ 		cmp FrameDisplay, 0
+ 		je @@SkipUpdate
+		call UpdateBuffer
+
+ @@SkipUpdate:	pop di si ds es cx bx ax
+		sti
 
 		db 0eah			; will be translated to jmp
 Old08Offset:	dw 0000h		; this part will be modificated
@@ -286,6 +306,61 @@ FlushBuffer	proc
 		ret
 		endp
 
+;===============================================================================
+; UpdateBuffer
+;
+; Updates draw buffer comparing it with screen
+; Entry:     ES - video memory segment
+;	     DS - data segment
+; Exit:      -
+; Expected:  -
+; Destroyed: DI, SI, CX, AX, BX
+;-------------------------------------------------------------------------------
+
+UpdateBuffer	proc
+
+		mov ax, 0b800h
+		mov es, ax
+
+		mov di, (80d * frame_y + frame_x) * 2	; es:di video mem coords
+		mov si, offset DrawBuffer		; ds:si buffer
+		xor ax, ax			; ax = 0 - no changes made
+
+		mov cx, frame_height
+
+@@CmpFrame:				; compares lines
+		push cx
+		mov cx, frame_width
+
+@@CmpLine:				; compares symbols in line
+		mov bx, es:[di]
+		cmp bx, ds:[si]	
+		je @@Equal
+
+		mov word ptr ds:[si], bx	; replaces diff words
+		mov ax, 1		; ax shows that replaces were made
+
+@@Equal:	
+		add si, 2		; increments si and di 
+		add di, 2
+		loop @@CmpLine
+
+		pop cx
+		sub di, frame_width * 2	; new line
+		add di, 80 * 2
+		loop @@CmpFrame
+
+
+		cmp ax, 0		; checks if replaces happened
+		je @@EndOfProg
+
+		mov di, (80d * frame_y + frame_x) * 2
+		mov si, offset DrawBuffer
+		call FlushBuffer	; draws frame to make it on top
+
+@@EndOfProg:
+		ret
+		endp
 
 ;===============================================================================
 ; DrawFrame
@@ -359,7 +434,7 @@ DrawHBorder	proc
 		endp
 
 ;===============================================================================
-; DrawEmptyLine 
+; DrawEmptyLine
 ;
 ; Draws empty line in frame
 ; Entry:     ES -> video mem segment
@@ -368,7 +443,7 @@ DrawHBorder	proc
 ;	     CS -> code segment
 ; Exit:      -
 ; Expected:  -
-; Destroyed: AX, CX
+; Destroyed: AX, CX, DI
 ;-------------------------------------------------------------------------------
 
 DrawEmptyLine	proc
