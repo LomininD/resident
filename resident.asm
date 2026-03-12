@@ -14,13 +14,13 @@ locals @@
 activation_key_scan_code = 15d
 frame_height = 17			; height of frame
 frame_width = 11 			; width of frame
-frame_x	 = 0				; coords counted from top left corner
-frame_y	 = 0				; coords of frame = coords of frame
+frame_x	 = 1				; coords counted from top left corner
+frame_y	 = 1				; coords of frame = coords of frame
 					; top left corner
 
 
 
-Start:
+Start:	
 		mov ax, 3508h		; get address of 08 int handler in es:bx 
 		int 21h
 		mov word ptr Old08Offset, bx
@@ -44,19 +44,6 @@ Start:
 		call SetHandler		; replaces existing 09 int handler addr 
 
 
-		push ds
-		pop es
-		call DrawFrame
-
-		push 0b800h
-		pop es
-		mov di, (80d * frame_y + frame_x) * 2
-		mov si, offset DrawBuffer
-		push di
-		call FlushBuffer
-		pop di
-
-
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
 		mov cl, 4
@@ -74,8 +61,8 @@ FrameStyle	db 0cdh			; frame style arr
 		db 0bbh
 		db 0c8h
 		db 0bch
-SaveBuffer	dw frame_height dup(frame_width dup(0))
-DrawBuffer	dw frame_height dup(frame_width dup(0))
+SaveBuffer	dw frame_height dup(frame_width dup(4e03h))
+DrawBuffer	dw frame_height dup(frame_width dup(4e03h))
 
 
 ;===============================================================================
@@ -114,7 +101,10 @@ SetHandler	proc
 ResidentMain	proc
 
 
-		push ax si es		; think about flags
+		push ax si es ds		; think about flags
+
+		mov ax, cs
+		mov ds, ax
 
 		call CmpKeystroke
 		cmp al, 1
@@ -158,7 +148,7 @@ ResidentMain	proc
 		mov FrameDisplay, 0
 
 @@Ret:
-		pop es si ax
+		pop ds es si ax
 
 		db 0eah			; will be translated to jmp
 Old09Offset:	dw 0000h		; this part will be modificated
@@ -235,8 +225,6 @@ Old08Seg:	dw 0000h		; to jmp OldSeg:OldOffset
 
 LoadBuffer	proc
 
-		cli
-
 		push ds			; swaps ds and es 
 		push es
 		pop ds
@@ -245,6 +233,7 @@ LoadBuffer	proc
 		cld
 		mov cx, frame_height
 
+		cli
 @@CopyLoop:				; copies frame area to dedicated buffer 
 		push cx
 		mov cx, frame_width
@@ -254,12 +243,12 @@ LoadBuffer	proc
 		pop cx
 		loop @@CopyLoop
 
+		sti
+
 		push ds
 		push es
 		pop ds
 		pop es
-
-		sti
 
 		ret
 		endp
@@ -279,11 +268,10 @@ LoadBuffer	proc
 
 FlushBuffer	proc
 
-		cli
-
 		cld
 		mov cx, frame_height
 
+		cli
 @@CopyLoop:				; buffer data to frame area
 		push cx
 		mov cx, frame_width
@@ -315,6 +303,8 @@ DrawFrame	proc
 		mov bx, 0
 		mov di, offset DrawBuffer
 
+		cli
+
 		call DrawHBorder
 
 		mov ah, Color_Attr
@@ -329,6 +319,8 @@ DrawFrame	proc
 
 		mov bx, 1		; bx = 1 for bottom border 
 		call DrawHBorder
+
+		sti
 
 		ret
 		endp
