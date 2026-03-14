@@ -18,13 +18,13 @@ frame_x	 = 1				; coords counted from top left corner
 frame_y	 = 1				; coords of frame = coords of frame
 					; top left corner
 
-Start:	
-		mov ax, 3508h		; get address of 08 int handler in es:bx 
+Start:
+		mov ax, 3508h		; get address of 08 int handler in es:bx
 		int 21h
 		mov word ptr Old08Offset, bx
 		mov word ptr Old08Seg, es
 
-		mov ax, 3509h		; get address of 09 int handler in es:bx 
+		mov ax, 3509h		; get address of 09 int handler in es:bx
 		int 21h
 		mov word ptr Old09Offset, bx
 		mov word ptr Old09Seg, es
@@ -33,53 +33,13 @@ Start:
 		xor ax, ax
 		mov es, ax
 
-		mov bx, 4*08h		; address of 08 int handler is located 
+		mov bx, 4*08h		; address of 08 int handler is located
 		mov ax, offset TripleBuffering	     ; at seg 0000h offs 4*09h
-		call SetHandler		; intercepts timer with triple buffering 
+		call SetHandler		; intercepts timer with triple buffering
 
 		mov bx, 4*09h		; address of 09 int handler is located
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
-		call SetHandler		; replaces existing 09 int handler addr 
-; 
-; @@OpenFrame:
-; 		push 0b800h
-; 		pop es
-; 		mov si, (80d * frame_y + frame_x) * 2
-; 		mov di, offset SaveBuffer
-; 		push si
-; 		call LoadBuffer		; initializes save buffer before drawing 
-; 		pop si
-; 
-; 		push ds
-; 		pop es
-; 		call DrawFrame
-; 
-; 		push 0b800h
-; 		pop es
-; 		mov di, (80d * frame_y + frame_x) * 2
-; 		mov si, offset DrawBuffer
-; 		push di
-; 		call FlushBuffer
-; 		pop di
-; 
-; 		mov FrameDisplay, 1
-; 
-; 		call UpdateBuffer
-; 
-; 		mov bx, 320+20
-; 		mov es:[bx], 4e03h
-; 
-; 		call UpdateBuffer
-; 
-; @@CloseFrame:
-; 		push 0b800h
-; 		pop es
-; 		mov di, (80d * frame_y + frame_x) * 2
-; 		mov si, offset SaveBuffer
-; 		push di
-; 		call FlushBuffer
-; 		pop di
-; 		mov FrameDisplay, 0
+		call SetHandler		; replaces existing 09 int handler addr
 
 
 
@@ -158,19 +118,19 @@ ResidentMain	proc
 		mov si, (80d * frame_y + frame_x) * 2
 		mov di, offset SaveBuffer
 		push si
-		call LoadBuffer		; initializes save buffer before drawing 
+		call LoadBuffer		; initializes save buffer before drawing
 		pop si
 
 		push ds
 		pop es
-		call DrawFrame
+		call DrawFrame		; draws frame in draw buffer
 
 		push 0b800h
 		pop es
 		mov di, (80d * frame_y + frame_x) * 2
 		mov si, offset DrawBuffer
 		push di
-		call FlushBuffer
+		call FlushBuffer	; copies draw buffer to screen
 		pop di
 
 		mov FrameDisplay, 1
@@ -182,7 +142,7 @@ ResidentMain	proc
 		mov di, (80d * frame_y + frame_x) * 2
 		mov si, offset SaveBuffer
 		push di
-		call FlushBuffer
+		call FlushBuffer	; copies save buffer to screen
 		pop di
 		mov FrameDisplay, 0
 		sti
@@ -244,16 +204,19 @@ CmpKeystroke	proc
 ; Destroyed: -
 ;-------------------------------------------------------------------------------
 
-TripleBuffering	proc
-
-		cli
+TripleBuffering	proc			; updates frame, so it is always on top
+					; triple buffering makes everything 
+		cli			; behind frame up-to-date
  		push ax bx cx es ds si di dx
 
 		mov ax, cs
 		mov ds, ax
 
- 		cmp FrameDisplay, 0
+ 		cmp FrameDisplay, 0	; disables updating if frame is disabled
  		je @@SkipUpdate
+
+		mov ax, 0b800h
+		mov es, ax
 		call UpdateBuffer
 
  @@SkipUpdate:	pop dx di si ds es cx bx ax
@@ -281,7 +244,7 @@ Old08Seg:	dw 0000h		; to jmp OldSeg:OldOffset
 
 LoadBuffer	proc
 
-		push ds			; swaps ds and es 
+		push ds			; swaps ds and es
 		push es
 		pop ds
 		pop es
@@ -290,7 +253,7 @@ LoadBuffer	proc
 		mov cx, frame_height
 
 		cli
-@@CopyLoop:				; copies frame area to dedicated buffer 
+@@CopyLoop:				; copies frame area to dedicated buffer
 		push cx
 		mov cx, frame_width
 		rep movsw
@@ -301,7 +264,7 @@ LoadBuffer	proc
 
 		sti
 
-		push ds
+		push ds			; swaps back ds and es
 		push es
 		pop ds
 		pop es
@@ -328,11 +291,12 @@ FlushBuffer	proc
 		mov cx, frame_height
 
 		cli
-@@CopyLoop:				; buffer data to frame area
+@@CopyLoop:				; copies buffer data to frame area
 		push cx
 		mov cx, frame_width
 		rep movsw
-		add di, 80*2
+
+		add di, 80*2		; moves to next line
 		sub di, frame_width * 2
 		pop cx
 		loop @@CopyLoop
@@ -355,9 +319,6 @@ FlushBuffer	proc
 
 UpdateBuffer	proc
 
-		mov ax, 0b800h
-		mov es, ax
-
 		mov di, (80d * frame_y + frame_x) * 2	; es:di video mem coords
 		mov bx, offset DrawBuffer
 		xor si, si			; ds:(bx + si) buffer address
@@ -371,17 +332,17 @@ UpdateBuffer	proc
 
 @@CmpLine:				; compares symbols in line
 		mov dx, es:[di]
-		cmp dx, ds:[bx+si]	
+		cmp dx, ds:[bx+si]
 		je @@Equal
 
 		push bx			; replaces diff words in save buffer
 		mov bx, offset SaveBuffer	; not draw buffer!
 		mov word ptr ds:[bx+si], dx
-		pop bx	
+		pop bx
 		mov ax, 1		; ax shows that replaces were made
 
-@@Equal:	
-		add si, 2		; increments si and di 
+@@Equal:
+		add si, 2		; increments si and di
 		add di, 2
 		loop @@CmpLine
 
@@ -420,20 +381,20 @@ DrawFrame	proc
 
 		cli
 
-		call DrawHBorder
+		call DrawHBorder	; draws horizontal top border
 
 		mov ah, Color_Attr
 		mov cx, frame_height
 		sub cx, 2
 
-@@Center:
+@@Center:				; draws center part of frame
 		push cx
 		call DrawEmptyLine
 		pop cx
 		loop @@Center
 
-		mov bx, 1		; bx = 1 for bottom border 
-		call DrawHBorder
+		mov bx, 1		; bx = 1 for bottom border
+		call DrawHBorder	; draws horizontal bottom border
 
 		sti
 
@@ -454,21 +415,21 @@ DrawFrame	proc
 
 DrawHBorder	proc
 
-		shl bx, 1		; modificates bx=0 -> bx=2  
+		shl bx, 1		; modificates bx=0 -> bx=2
 		add bx, 2		; 	      bx=1 -> bx=4
 
 		mov ah, Color_Attr
 		mov al, [FrameStyle + bx]
-		stosw
+		stosw			; left corner
 
-		mov cx, frame_width
+		mov cx, frame_width	; middle part of border
 		sub cx, 2
 		mov al, [FrameStyle]
 
 		rep stosw		; draws mid part of upper hor border
 
 		mov al, [FrameStyle + bx + 1]
-		stosw
+		stosw			; right corner
 
 		ret
 		endp
@@ -490,7 +451,7 @@ DrawEmptyLine	proc
 
 		mov ah, Color_Attr
 		mov al, [FrameStyle + 1]
-		stosw			; draws part of right vert border
+		stosw			; draws part of left vert border
 
 		mov al, 00h
 		mov cx, frame_width
