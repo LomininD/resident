@@ -40,10 +40,46 @@ Start:
 		mov bx, 4*09h		; address of 09 int handler is located
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
 		call SetHandler		; replaces existing 09 int handler addr 
-
-
-
-
+; 
+; @@OpenFrame:
+; 		push 0b800h
+; 		pop es
+; 		mov si, (80d * frame_y + frame_x) * 2
+; 		mov di, offset SaveBuffer
+; 		push si
+; 		call LoadBuffer		; initializes save buffer before drawing 
+; 		pop si
+; 
+; 		push ds
+; 		pop es
+; 		call DrawFrame
+; 
+; 		push 0b800h
+; 		pop es
+; 		mov di, (80d * frame_y + frame_x) * 2
+; 		mov si, offset DrawBuffer
+; 		push di
+; 		call FlushBuffer
+; 		pop di
+; 
+; 		mov FrameDisplay, 1
+; 
+; 		call UpdateBuffer
+; 
+; 		mov bx, 320+20
+; 		mov es:[bx], 4e03h
+; 
+; 		call UpdateBuffer
+; 
+; @@CloseFrame:
+; 		push 0b800h
+; 		pop es
+; 		mov di, (80d * frame_y + frame_x) * 2
+; 		mov si, offset SaveBuffer
+; 		push di
+; 		call FlushBuffer
+; 		pop di
+; 		mov FrameDisplay, 0
 
 
 
@@ -98,7 +134,7 @@ SetHandler	proc
 ; Entry:     -
 ; Exit:      -
 ; Expected:  -
-; Destroyed: AX, SI, ES, DS, CX, DI
+; Destroyed: -
 ;-------------------------------------------------------------------------------
 
 ResidentMain	proc
@@ -211,7 +247,7 @@ CmpKeystroke	proc
 TripleBuffering	proc
 
 		cli
- 		push ax bx cx es ds si di
+ 		push ax bx cx es ds si di dx
 
 		mov ax, cs
 		mov ds, ax
@@ -220,7 +256,7 @@ TripleBuffering	proc
  		je @@SkipUpdate
 		call UpdateBuffer
 
- @@SkipUpdate:	pop di si ds es cx bx ax
+ @@SkipUpdate:	pop dx di si ds es cx bx ax
 		sti
 
 		db 0eah			; will be translated to jmp
@@ -314,7 +350,7 @@ FlushBuffer	proc
 ;	     DS - data segment
 ; Exit:      -
 ; Expected:  -
-; Destroyed: DI, SI, CX, AX, BX
+; Destroyed: DI, SI, CX, AX, BX, DX
 ;-------------------------------------------------------------------------------
 
 UpdateBuffer	proc
@@ -323,7 +359,8 @@ UpdateBuffer	proc
 		mov es, ax
 
 		mov di, (80d * frame_y + frame_x) * 2	; es:di video mem coords
-		mov si, offset DrawBuffer		; ds:si buffer
+		mov bx, offset DrawBuffer
+		xor si, si			; ds:(bx + si) buffer address
 		xor ax, ax			; ax = 0 - no changes made
 
 		mov cx, frame_height
@@ -333,11 +370,14 @@ UpdateBuffer	proc
 		mov cx, frame_width
 
 @@CmpLine:				; compares symbols in line
-		mov bx, es:[di]
-		cmp bx, ds:[si]	
+		mov dx, es:[di]
+		cmp dx, ds:[bx+si]	
 		je @@Equal
 
-		mov word ptr ds:[si], bx	; replaces diff words
+		push bx			; replaces diff words in save buffer
+		mov bx, offset SaveBuffer	; not draw buffer!
+		mov word ptr ds:[bx+si], dx
+		pop bx	
 		mov ax, 1		; ax shows that replaces were made
 
 @@Equal:	
