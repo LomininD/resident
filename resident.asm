@@ -29,7 +29,6 @@ Start:
 		mov word ptr Old09Offset, bx
 		mov word ptr Old09Seg, es
 
-
 		xor ax, ax
 		mov es, ax
 
@@ -41,7 +40,7 @@ Start:
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
 		call SetHandler		; replaces existing 09 int handler addr
 
-
+	
 
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
@@ -385,7 +384,14 @@ DrawFrame	proc
 
 		mov ah, Color_Attr
 		mov cx, frame_height
-		sub cx, 2
+		sub cx, 3
+
+		push cx
+		call ShowAX
+		pop cx
+		; push cx
+		; call DrawEmptyLine
+		; pop cx
 
 @@Center:				; draws center part of frame
 		push cx
@@ -440,11 +446,10 @@ DrawHBorder	proc
 ; Draws empty line in frame
 ; Entry:     ES -> video mem segment
 ;	     DI -> line offset for frame border
-;	     AL -> frame symbol
 ;	     CS -> code segment
 ; Exit:      -
 ; Expected:  -
-; Destroyed: AX, CX, DI
+; Destroyed: AX, CX, DI (usable after)
 ;-------------------------------------------------------------------------------
 
 DrawEmptyLine	proc
@@ -464,6 +469,42 @@ DrawEmptyLine	proc
 
 		ret
 		endp
+
+;===============================================================================
+; ShowAX
+;
+; Displays AX register in frame
+; Entry:
+;	     DI -> line offset for frame border
+;	     CS -> code segment
+; Exit:      -
+; Expected:  -
+; Destroyed: AX, CX, SI (usable after), DI (usable after)
+;-------------------------------------------------------------------------------
+
+ShowAX		proc
+
+		mov ah, Color_Attr
+		mov al, [FrameStyle + 1]
+		stosw			; draws part of left vert border
+
+		mov si, offset StringAX 
+		mov cx, 9
+
+		; func - load number in string
+
+@@DisplayLoop:				; new func
+		lodsb
+		stosw
+		loop @@DisplayLoop
+
+		mov al, [FrameStyle + 1]
+		stosw			; draws part of right vert border
+
+		ret
+		endp
+
+StringAX	db ' AX 0000 '
 
 
 
