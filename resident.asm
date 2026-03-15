@@ -51,7 +51,22 @@ Start:
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
 		call SetHandler		; replaces existing 09 int handler addr
 
-	
+; 
+; 		pushf
+; 		push cs
+; 		push cs			; aka ip
+; 
+; 		push ax				; saves ax
+; 		mov ax, sp
+; 		add ax, 8			; 3 int pushes + ax push
+; 		mov SavedSP, ax			; saves original sp
+; 
+; 		push bx cx dx si di bp ds es ss	; saves other regs
+; 	
+; 		push ds
+; 		pop es
+; 		call DrawFrame
+
 
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
@@ -115,7 +130,7 @@ ResidentMain	proc
 
 		push ax				; saves ax
 		mov ax, sp
-		add ax, 6			; sp decremented by 6 after int
+		add ax, 8			; 3 int pushes + ax push
 		mov SavedSP, ax			; saves original sp
 
 		push bx cx dx si di bp ds es ss	; saves other regs
@@ -506,7 +521,7 @@ DrawEmptyLine	proc
 ; Destroyed: AX, BX, CX, SI (usable after), DI (usable after)
 ;-------------------------------------------------------------------------------
 
-ShowAX		proc
+ShowAX		proc			; ShowReg?
 
 		mov ah, Color_Attr
 		mov al, [FrameStyle + 1]
@@ -518,7 +533,10 @@ ShowAX		proc
 		CopyStr			; copies StringAX to DrawBuffer
 
 		push ax
-		call LoadNumber		; wrong ax 
+		mov bx, SavedSP
+		sub bx, 8		; get ax address in stack
+		mov ax, ss:[bx]
+		call LoadNumber
 		pop ax
 
 		mov al, 00h		; adds space after number
@@ -544,7 +562,7 @@ StringAX	db ' AX '
 ; Destroyed: AX, BX
 ;-------------------------------------------------------------------------------
 
-LoadNumber	proc
+LoadNumber	proc			; DEBUG !!!
 
 		mov bx, ax		; saves AX
 
@@ -589,7 +607,7 @@ DigitToStr	proc
 		jmp @@EndMacro
 
 @@IsAlpha:	add al, "a"
-		sub al, 9
+		sub al, 10
 
 @@EndMacro:	mov ah, Color_Attr
 		stosw
