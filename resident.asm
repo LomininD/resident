@@ -18,6 +18,17 @@ frame_x	 = 1				; coords counted from top left corner
 frame_y	 = 1				; coords of frame = coords of frame
 					; top left corner
 
+
+CopyStr		macro
+
+@@DisplayLoop:
+		lodsb
+		stosw
+		loop @@DisplayLoop
+
+		endm
+
+
 Start:
 		mov ax, 3508h		; get address of 08 int handler in es:bx
 		int 21h
@@ -50,7 +61,7 @@ Start:
 		int 21h
 
 
-
+SavedSP		dw 0			; saved value of sp
 FrameDisplay	db 0			; 0 - if frame not shown, 1 - overwise
 Color_Attr	db 4eh			; color of frame
 FrameStyle	db 0cdh			; frame style arr
@@ -99,7 +110,20 @@ SetHandler	proc
 ResidentMain	proc
 		cli
 
-		push ax si es ds cx di		; think about flags
+		; when int happens Flags, CS, IP are pushed in stack
+		; so SP is decremented by 6 as pushed regs are 2 bytes each
+
+		push ax				; saves ax
+		mov ax, sp
+		add ax, 6			; sp decremented by 6 after int
+		mov SavedSP, ax			; saves original sp
+
+		push bx cx dx si di bp ds es ss	; saves other regs
+		 
+		; registers are stored in this order: 
+		; [old] Flags, CS, IP, AX, BX, CX, DX, SI, DI, BP, DS, ES, SS
+		; <---------------- SP grows in this direction ----------------
+		; ^SP^ = SavedSP
 
 		mov ax, cs
 		mov ds, ax
@@ -144,11 +168,9 @@ ResidentMain	proc
 		call FlushBuffer	; copies save buffer to screen
 		pop di
 		mov FrameDisplay, 0
-		sti
-
 
 @@Ret:
-		pop di cx ds es si ax
+		pop ss es ds bp di si dx cx bx ax
 
 		sti
 
@@ -206,6 +228,7 @@ CmpKeystroke	proc
 TripleBuffering	proc			; updates frame, so it is always on top
 					; triple buffering makes everything 
 		cli			; behind frame up-to-date
+
  		push ax bx cx es ds si di dx
 
 		mov ax, cs
@@ -219,6 +242,7 @@ TripleBuffering	proc			; updates frame, so it is always on top
 		call UpdateBuffer
 
  @@SkipUpdate:	pop dx di si ds es cx bx ax
+
 		sti
 
 		db 0eah			; will be translated to jmp
@@ -479,7 +503,7 @@ DrawEmptyLine	proc
 ;	     CS -> code segment
 ; Exit:      -
 ; Expected:  -
-; Destroyed: AX, CX, SI (usable after), DI (usable after)
+; Destroyed: AX, BX, CX, SI (usable after), DI (usable after)
 ;-------------------------------------------------------------------------------
 
 ShowAX		proc
@@ -488,15 +512,17 @@ ShowAX		proc
 		mov al, [FrameStyle + 1]
 		stosw			; draws part of left vert border
 
-		mov si, offset StringAX 
-		mov cx, 9
+		mov si, offset StringAX
 
-		; func - load number in string
+		mov cx, 4
+		CopyStr			; copies StringAX to DrawBuffer
 
-@@DisplayLoop:				; new func
-		lodsb
+		push ax
+		call LoadNumber		; wrong ax 
+		pop ax
+
+		mov al, 00h		; adds space after number
 		stosw
-		loop @@DisplayLoop
 
 		mov al, [FrameStyle + 1]
 		stosw			; draws part of right vert border
@@ -504,8 +530,72 @@ ShowAX		proc
 		ret
 		endp
 
-StringAX	db ' AX 0000 '
+StringAX	db ' AX '
 
+;===============================================================================
+; LoadNumber
+;
+; Displays AX register in frame
+; Entry:
+;	     SI -> line offset for frame border
+;	     AX -> number to load
+; Exit:      -
+; Expected:  -
+; Destroyed: AX, BX
+;-------------------------------------------------------------------------------
+
+LoadNumber	proc
+
+		mov bx, ax		; saves AX
+
+		shr ax, 12		; ah = 1st digit
+		call DigitToStr
+
+		mov ax, bx
+		and ax, 0f00h		; masks off 2nd digit
+		shr ax, 8
+		call DigitToStr
+
+		mov ax, bx
+		and ax, 00f0h		; masks off 2nd digit
+		shr ax, 4
+		call DigitToStr
+
+		mov ax, bx
+		and ax, 000fh		; masks off 2nd digit
+		call DigitToStr
+
+		ret
+		endp
+
+;===============================================================================
+; DigitToStr
+;
+; Converts digit to symbol and displays in buffer
+; Entry:
+;	     SI -> line offset for frame border
+;	     AX -> digit
+; Exit:      -
+; Expected:  -
+; Destroyed: AX
+;-------------------------------------------------------------------------------
+
+DigitToStr	proc
+
+		cmp ax, 9
+		ja @@IsAlpha
+
+		add al, "0"
+		jmp @@EndMacro
+
+@@IsAlpha:	add al, "a"
+		sub al, 9
+
+@@EndMacro:	mov ah, Color_Attr
+		stosw
+
+		ret
+		endp
 
 
 EndOfProg:
