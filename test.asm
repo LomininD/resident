@@ -3,19 +3,25 @@
 org 100h
 
 Start:
-		push 0b800h
-		pop es
-		mov bx, (80d*5 + 40d) * 2
-		mov ah, 4eh
+
+	
+
+MainLoop:
+	mov ax, 1111h
+	mov bx, 2222h
+	mov cx, 3333h
+	mov dx, 4444h
+	in al, 60h
+	cmp al, 2
+	je Next
+	jmp MainLoop
 
 Next:
-		in al, 60h
-		mov es:[bx], ax
-		cmp al, 1
-		jne Next
+	mov ax, 4c00h
+	int 21h
 
-		mov ax, 4c00h
-		int 21h
+
+
 	
 end 		Start
 
