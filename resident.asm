@@ -87,6 +87,10 @@ FrameStyle	db 0cdh			; frame style arr
 		db 0bch
 SaveBuffer	dw frame_height dup(frame_width dup(4e03h))
 DrawBuffer	dw frame_height dup(frame_width dup(4e03h))
+StringAX	db ' AX '
+StringBX	db ' BX '
+StringCX	db ' CX '
+StringDX	db ' DX '
 
 
 ;===============================================================================
@@ -125,13 +129,14 @@ SetHandler	proc
 ResidentMain	proc
 		cli
 
+
 		; when int happens Flags, CS, IP are pushed in stack
 		; so SP is decremented by 6 as pushed regs are 2 bytes each
 
 		push ax				; saves ax
 		mov ax, sp
 		add ax, 8			; 3 int pushes + ax push
-		mov SavedSP, ax			; saves original sp
+		mov cs:[SavedSP], ax		; saves original sp
 
 		push bx cx dx si di bp ds es ss	; saves other regs
 		 
@@ -290,7 +295,6 @@ LoadBuffer	proc
 		cld
 		mov cx, frame_height
 
-		cli
 @@CopyLoop:				; copies frame area to dedicated buffer
 		push cx
 		mov cx, frame_width
@@ -299,8 +303,6 @@ LoadBuffer	proc
 		sub si, frame_width * 2
 		pop cx
 		loop @@CopyLoop
-
-		sti
 
 		push ds			; swaps back ds and es
 		push es
@@ -328,7 +330,6 @@ FlushBuffer	proc
 		cld
 		mov cx, frame_height
 
-		cli
 @@CopyLoop:				; copies buffer data to frame area
 		push cx
 		mov cx, frame_width
@@ -338,8 +339,6 @@ FlushBuffer	proc
 		sub di, frame_width * 2
 		pop cx
 		loop @@CopyLoop
-
-		sti
 
 		ret
 		endp
@@ -417,16 +416,34 @@ DrawFrame	proc
 		mov bx, 0
 		mov di, offset DrawBuffer
 
-		cli
-
 		call DrawHBorder	; draws horizontal top border
 
 		mov ah, Color_Attr
 		mov cx, frame_height
-		sub cx, 3
+		sub cx, 6
 
 		push cx
-		call ShowAX
+
+		mov bx, SavedSP
+		sub bx, 8		; get ax address in stack
+		mov si, offset StringAX
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 10		; get bx address in stack
+		mov si, offset StringBX
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 12		; get cx address in stack
+		mov si, offset StringCX
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 14		; get dx address in stack
+		mov si, offset StringDX
+		call ShowReg
+
 		pop cx
 		; push cx
 		; call DrawEmptyLine
@@ -440,8 +457,6 @@ DrawFrame	proc
 
 		mov bx, 1		; bx = 1 for bottom border
 		call DrawHBorder	; draws horizontal bottom border
-
-		sti
 
 		ret
 		endp
@@ -510,31 +525,28 @@ DrawEmptyLine	proc
 		endp
 
 ;===============================================================================
-; ShowAX
+; ShowReg
 ;
 ; Displays AX register in frame
-; Entry:
+; Entry:     BX -> reg offset in SS
 ;	     DI -> line offset for frame border
+;	     SI -> reg str offset
 ;	     CS -> code segment
 ; Exit:      -
 ; Expected:  -
 ; Destroyed: AX, BX, CX, SI (usable after), DI (usable after)
 ;-------------------------------------------------------------------------------
 
-ShowAX		proc			; ShowReg?
+ShowReg		proc			; ShowReg?
 
 		mov ah, Color_Attr
 		mov al, [FrameStyle + 1]
 		stosw			; draws part of left vert border
 
-		mov si, offset StringAX
-
 		mov cx, 4
 		CopyStr			; copies StringAX to DrawBuffer
 
 		push ax
-		mov bx, SavedSP
-		sub bx, 8		; get ax address in stack
 		mov ax, ss:[bx]
 		call LoadNumber
 		pop ax
@@ -548,8 +560,6 @@ ShowAX		proc			; ShowReg?
 		ret
 		endp
 
-StringAX	db ' AX '
-
 ;===============================================================================
 ; LoadNumber
 ;
@@ -562,7 +572,7 @@ StringAX	db ' AX '
 ; Destroyed: AX, BX
 ;-------------------------------------------------------------------------------
 
-LoadNumber	proc			; DEBUG !!!
+LoadNumber	proc
 
 		mov bx, ax		; saves AX
 
