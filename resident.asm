@@ -12,7 +12,7 @@ org 100h
 locals @@
 
 activation_key_scan_code = 15d
-frame_height = 17			; height of frame
+frame_height = 15			; height of frame
 frame_width = 11 			; width of frame
 frame_x	 = 1				; coords counted from top left corner
 frame_y	 = 1				; coords of frame = coords of frame
@@ -91,7 +91,15 @@ StringAX	db ' AX '
 StringBX	db ' BX '
 StringCX	db ' CX '
 StringDX	db ' DX '
-
+StringSI	db ' SI '
+StringDI	db ' DI '
+StringBP	db ' BP '
+StringSP	db ' SP '
+StringDS	db ' DS '
+StringES	db ' ES '
+StringSS	db ' SS '
+StringCS	db ' CS '
+StringIP	db ' IP '
 
 ;===============================================================================
 ; SetHandler
@@ -138,7 +146,9 @@ ResidentMain	proc
 		add ax, 8			; 3 int pushes + ax push
 		mov cs:[SavedSP], ax		; saves original sp
 
-		push bx cx dx si di bp ds es ss	; saves other regs
+		push bx cx dx si di bp ds es ss	ax	; saves other regs
+						; ax <=> sp
+
 		 
 		; registers are stored in this order: 
 		; [old] Flags, CS, IP, AX, BX, CX, DX, SI, DI, BP, DS, ES, SS
@@ -190,7 +200,7 @@ ResidentMain	proc
 		mov FrameDisplay, 0
 
 @@Ret:
-		pop ss es ds bp di si dx cx bx ax
+		pop ax ss es ds bp di si dx cx bx ax
 
 		sti
 
@@ -415,14 +425,16 @@ DrawFrame	proc
 
 		mov bx, 0
 		mov di, offset DrawBuffer
+		mov ah, Color_Attr
 
 		call DrawHBorder	; draws horizontal top border
 
-		mov ah, Color_Attr
-		mov cx, frame_height
-		sub cx, 6
+		;call DrawEmptyLine
 
-		push cx
+; 		mov cx, frame_height
+; 		sub cx, 7
+; 
+; 		push cx
 
 		mov bx, SavedSP
 		sub bx, 8		; get ax address in stack
@@ -444,16 +456,62 @@ DrawFrame	proc
 		mov si, offset StringDX
 		call ShowReg
 
-		pop cx
+		mov bx, SavedSP
+		sub bx, 16		; get si address in stack
+		mov si, offset StringSI
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 18		; get di address in stack
+		mov si, offset StringDI
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 20		; get bp address in stack
+		mov si, offset StringBP
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 28		; get sp address in stack
+		mov si, offset StringSP
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 22		; get ds address in stack
+		mov si, offset StringDS
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 24		; get es address in stack
+		mov si, offset StringES
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 26		; get ss address in stack
+		mov si, offset StringSS
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 4		; get cs address in stack
+		mov si, offset StringCS
+		call ShowReg
+
+		mov bx, SavedSP
+		sub bx, 6		; get ip address in stack
+		mov si, offset StringIP
+		call ShowReg
+
+
+		;pop cx
 		; push cx
 		; call DrawEmptyLine
 		; pop cx
 
-@@Center:				; draws center part of frame
-		push cx
-		call DrawEmptyLine
-		pop cx
-		loop @@Center
+; @@Center:				; draws center part of frame
+; 		push cx
+; 		call DrawEmptyLine
+; 		pop cx
+; 		loop @@Center
 
 		mov bx, 1		; bx = 1 for bottom border
 		call DrawHBorder	; draws horizontal bottom border
