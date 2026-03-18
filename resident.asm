@@ -55,8 +55,10 @@ Start:
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
 		call SetHandler		; replaces existing 09 int handler addr
 
-
-
+		; pushf
+		; push cs
+		; call ResidentMain
+		
 
 		mov ax, 3100h		; makes program stay resident
 		mov dx, offset EndOfProg
@@ -69,28 +71,13 @@ Start:
 SavedSP		dw 0			; saved value of sp
 FrameDisplay	db 0			; 0 - if frame not shown, 1 - overwise
 Color_Attr	db 4eh			; color of frame
-FrameStyle	db 0cdh			; frame style arr
-		db 0bah
-		db 0c9h
-		db 0bbh
-		db 0c8h
-		db 0bch
+FrameStyle	db 0cdh, 0bah, 0c9h, 0bbh, 0c8h, 0bch			
+					; frame style arr
 SaveBuffer	dw frame_height dup(frame_width dup(4e03h))
 DrawBuffer	dw frame_height dup(frame_width dup(4e03h))
-StringAX	db ' AX '
-StringBX	db ' BX '
-StringCX	db ' CX '
-StringDX	db ' DX '
-StringSI	db ' SI '
-StringDI	db ' DI '
-StringBP	db ' BP '
-StringSP	db ' SP '
-StringDS	db ' DS '
-StringES	db ' ES '
-StringSS	db ' SS '
-StringCS	db ' CS '
-StringIP	db ' IP '
-RegOffsets	db 8, 10, 12, 14, 16, 18, 20, 28, 22, 24, 26, 4, 6
+RegString	db ' AX ', ' BX ', ' CX ', ' DX ', ' SI ', ' DI ', ' BP '
+		db ' SP ', ' DS ', ' ES ', ' SS ', ' CS ', ' IP '
+RegOffsets	db 8d, 10d, 12d, 14d, 16d, 18d, 20d, 28d, 22d, 24d, 26d, 4d, 6d
 		; offsets for saved register in stack
 
 ;===============================================================================
@@ -409,7 +396,7 @@ UpdateBuffer	proc
 ;	     CS -> code segment
 ; Exit:      -
 ; Expected:  -
-; Destroyed: AX, BX, CX, DI, SI
+; Destroyed: AX, BX, CX, DI, SI, BP
 ;-------------------------------------------------------------------------------
 
 DrawFrame	proc
@@ -420,77 +407,27 @@ DrawFrame	proc
 
 		call DrawHBorder	; draws horizontal top border
 
-		;call DrawEmptyLine
+		mov cx, 13
+		mov si, offset RegString
+		mov bp, offset RegOffsets
 
-; 		mov cx, frame_height
-; 		sub cx, 7
-; 
-; 		push cx
-
+@@DisplayLoop:
+		push cx
+		push si
 		mov bx, SavedSP
-		sub bx, 8		; get ax address in stack
-		mov si, offset StringAX
+		xor ax, ax
+		mov al, byte ptr cs:[bp]
+		sub bx, ax
+		
 		call ShowReg
 
-		mov bx, SavedSP
-		sub bx, 10		; get bx address in stack
-		mov si, offset StringBX
-		call ShowReg
+		pop si
+		pop cx
 
-		mov bx, SavedSP
-		sub bx, 12		; get cx address in stack
-		mov si, offset StringCX
-		call ShowReg
+		add si, 4
+		inc bp
+		loop @@DisplayLoop
 
-		mov bx, SavedSP
-		sub bx, 14		; get dx address in stack
-		mov si, offset StringDX
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 16		; get si address in stack
-		mov si, offset StringSI
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 18		; get di address in stack
-		mov si, offset StringDI
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 20		; get bp address in stack
-		mov si, offset StringBP
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 28		; get sp address in stack
-		mov si, offset StringSP
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 22		; get ds address in stack
-		mov si, offset StringDS
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 24		; get es address in stack
-		mov si, offset StringES
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 26		; get ss address in stack
-		mov si, offset StringSS
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 4		; get cs address in stack
-		mov si, offset StringCS
-		call ShowReg
-
-		mov bx, SavedSP
-		sub bx, 6		; get ip address in stack
-		mov si, offset StringIP
-		call ShowReg
 
 		mov bx, 1		; bx = 1 for bottom border
 		call DrawHBorder	; draws horizontal bottom border
@@ -564,7 +501,7 @@ DrawEmptyLine	proc
 ;===============================================================================
 ; ShowReg
 ;
-; Displays AX register in frame
+; Displays register in frame
 ; Entry:     BX -> reg offset in SS
 ;	     DI -> line offset for frame border
 ;	     SI -> reg str offset
