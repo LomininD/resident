@@ -28,7 +28,6 @@ CopyStr		macro
 		lodsb
 		stosw
 		loop @@DisplayLoop
-
 		endm
 
 
@@ -55,11 +54,20 @@ FreezeRegs	macro			; saves all register values before INT
 
 
 UnfreezeRegs	macro			; restores previous register values
-		
 		pop ax ss es ds bp di si dx cx bx ax
-
 		endm
 
+
+DisableM	macro
+		mov ax, 0002h		; hides mouse ptr so it wont
+		int 33h			; leave artifacts in SaveBuffer
+		endm
+
+
+EnableM		macro
+		mov ax, 0001h		; shows mouse ptr
+		int 33h
+		endm
 
 ;-------------------------------------------------------------------------------
 
@@ -94,7 +102,7 @@ Start:
 
 		; mov bx, 4*10h		; address of 09 int handler is located
 		; mov ax, offset AntiScroll	     ; at seg 0000h offs 4*10h
-		; call SetHandler		; replaces existing 09 int handler addr
+		; call SetHandler	; replaces existing 09 int handler addr
 
 		; pushf
 		; push cs
@@ -267,6 +275,8 @@ CmpKeystroke	proc
 ; 		je @@SkipInt
 ; 		cmp ah, 07h		; avoid scrolling down (al = 07h)
 ; 		je @@SkipInt
+;
+;		sti
 ; 
 ; 		db 0eah			; will be translated to jmp
 ; Old10Offset:	dw 0000h		; this part will be modified
@@ -331,7 +341,7 @@ Old08Seg:	dw 0000h		; to jmp OldSeg:OldOffset
 ;	     DI - buffer offset
 ; Exit:      -
 ; Expected:  -
-; Destroyed: DI, SI, CX
+; Destroyed: AX, DI, SI, CX
 ;-------------------------------------------------------------------------------
 
 LoadBuffer	proc
@@ -344,6 +354,8 @@ LoadBuffer	proc
 		cld
 		mov cx, frame_height
 
+		DisableM
+
 @@CopyLoop:				; copies frame area to dedicated buffer
 		push cx
 		mov cx, frame_width
@@ -352,6 +364,8 @@ LoadBuffer	proc
 		sub si, frame_width * 2
 		pop cx
 		loop @@CopyLoop
+
+		EnableM
 
 		push ds			; swaps back ds and es
 		push es
@@ -371,13 +385,15 @@ LoadBuffer	proc
 ;	     SI - buffer offset
 ; Exit:      -
 ; Expected:  -
-; Destroyed: DI, SI, CX
+; Destroyed: AX, DI, SI, CX
 ;-------------------------------------------------------------------------------
 
 FlushBuffer	proc
 
 		cld
 		mov cx, frame_height
+
+		DisableM
 
 @@CopyLoop:				; copies buffer data to frame area
 		push cx
@@ -388,6 +404,8 @@ FlushBuffer	proc
 		sub di, frame_width * 2
 		pop cx
 		loop @@CopyLoop
+
+		EnableM
 
 		ret
 		endp
@@ -408,6 +426,9 @@ UpdateBuffer	proc
 		mov di, (80d * frame_y + frame_x) * 2	; es:di video mem coords
 		mov bx, offset DrawBuffer
 		xor si, si			; ds:(bx + si) buffer address
+
+		DisableM
+
 		xor ax, ax			; ax = 0 - no changes made
 
 		mov cx, frame_height
@@ -446,6 +467,8 @@ UpdateBuffer	proc
 		call FlushBuffer	; draws frame to make it on top
 
 @@EndOfProg:
+		EnableM
+
 		ret
 		endp
 
