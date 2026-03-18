@@ -548,24 +548,29 @@ ShowReg		proc
 
 LoadNumber	proc
 
-		mov bx, ax		; saves AX
+		push cx			; save cx
+		mov bx, 0f000h
+		mov cx, 4		; 4-digit number
+		xor dx, dx
 
-		shr ax, 12		; ah = 1st digit
+@@ParseNum:
+		push ax			; save original number
+		and ax, bx		; mask off required digit
+
+		push cx			; save cx 
+		dec cx
+		shl cx, 2		; cx = 4 * (cx - 1)
+
+		shr ax, cl		; move required digit to the right
+
 		call DigitToStr
 
-		mov ax, bx
-		and ax, 0f00h		; masks off 2nd digit
-		shr ax, 8
-		call DigitToStr
+		shr bx, 4		; bx masks off next digit
+		pop cx
+		pop ax
+		loop @@ParseNum
 
-		mov ax, bx
-		and ax, 00f0h		; masks off 2nd digit
-		shr ax, 4
-		call DigitToStr
-
-		mov ax, bx
-		and ax, 000fh		; masks off 2nd digit
-		call DigitToStr
+		pop cx			; restore cx
 
 		ret
 		endp
