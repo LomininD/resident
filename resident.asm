@@ -18,6 +18,7 @@ frame_x	 = 1				; coords counted from top left corner
 frame_y	 = 1				; coords of frame = coords of frame
 					; top left corner
 
+;----------------------------------- MACROS ------------------------------------
 
 CopyStr		macro
 
@@ -28,6 +29,9 @@ CopyStr		macro
 
 		endm
 
+;-------------------------------------------------------------------------------
+
+;---------------------------------- Main Body ----------------------------------
 
 Start:
 		mov ax, 3508h		; get address of 08 int handler in es:bx
@@ -51,21 +55,7 @@ Start:
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
 		call SetHandler		; replaces existing 09 int handler addr
 
-; 
-; 		pushf
-; 		push cs
-; 		push cs			; aka ip
-; 
-; 		push ax				; saves ax
-; 		mov ax, sp
-; 		add ax, 8			; 3 int pushes + ax push
-; 		mov SavedSP, ax			; saves original sp
-; 
-; 		push bx cx dx si di bp ds es ss	; saves other regs
-; 	
-; 		push ds
-; 		pop es
-; 		call DrawFrame
+
 
 
 		mov ax, 3100h		; makes program stay resident
@@ -100,6 +90,8 @@ StringES	db ' ES '
 StringSS	db ' SS '
 StringCS	db ' CS '
 StringIP	db ' IP '
+RegOffsets	db 8, 10, 12, 14, 16, 18, 20, 28, 22, 24, 26, 4, 6
+		; offsets for saved register in stack
 
 ;===============================================================================
 ; SetHandler
@@ -149,7 +141,6 @@ ResidentMain	proc
 		push bx cx dx si di bp ds es ss	ax	; saves other regs
 						; ax <=> sp
 
-		 
 		; registers are stored in this order: 
 		; [old] Flags, CS, IP, AX, BX, CX, DX, SI, DI, BP, DS, ES, SS
 		; <---------------- SP grows in this direction ----------------
@@ -501,18 +492,6 @@ DrawFrame	proc
 		mov si, offset StringIP
 		call ShowReg
 
-
-		;pop cx
-		; push cx
-		; call DrawEmptyLine
-		; pop cx
-
-; @@Center:				; draws center part of frame
-; 		push cx
-; 		call DrawEmptyLine
-; 		pop cx
-; 		loop @@Center
-
 		mov bx, 1		; bx = 1 for bottom border
 		call DrawHBorder	; draws horizontal bottom border
 
@@ -595,7 +574,7 @@ DrawEmptyLine	proc
 ; Destroyed: AX, BX, CX, SI (usable after), DI (usable after)
 ;-------------------------------------------------------------------------------
 
-ShowReg		proc			; ShowReg?
+ShowReg		proc
 
 		mov ah, Color_Attr
 		mov al, [FrameStyle + 1]
