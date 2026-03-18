@@ -76,6 +76,11 @@ Start:
 		mov word ptr Old09Offset, bx
 		mov word ptr Old09Seg, es
 
+		; mov ax, 3510h		; get address of 10 int handler in es:bx
+		; int 21h
+		; mov word ptr Old10Offset, bx
+		; mov word ptr Old10Seg, es
+
 		xor ax, ax
 		mov es, ax
 
@@ -86,6 +91,10 @@ Start:
 		mov bx, 4*09h		; address of 09 int handler is located
 		mov ax, offset ResidentMain	     ; at seg 0000h offs 4*09h
 		call SetHandler		; replaces existing 09 int handler addr
+
+		; mov bx, 4*10h		; address of 09 int handler is located
+		; mov ax, offset AntiScroll	     ; at seg 0000h offs 4*10h
+		; call SetHandler		; replaces existing 09 int handler addr
 
 		; pushf
 		; push cs
@@ -200,7 +209,7 @@ ResidentMain	proc
 		sti
 
 		db 0eah			; will be translated to jmp
-Old09Offset:	dw 0000h		; this part will be modificated
+Old09Offset:	dw 0000h		; this part will be modified
 Old09Seg:	dw 0000h		; to jmp OldSeg:OldOffset
 
 		iret			; ret flags???
@@ -241,6 +250,40 @@ CmpKeystroke	proc
 		endp
 
 ;===============================================================================
+; AntiScroll
+;
+; Prevents screen from scrolling and undesirable triple buffering  artifacts 
+; from happening by intercepting INT 10h
+; Entry:     -
+; Exit:      -
+; Expected:  -
+; Destroyed: -
+;-------------------------------------------------------------------------------
+
+; AntiScroll	proc
+; 		cli
+; 
+; 		cmp ah, 06h		; avoid scrolling up (ah = 06h)
+; 		je @@SkipInt
+; 		cmp ah, 07h		; avoid scrolling down (al = 07h)
+; 		je @@SkipInt
+; 
+; 		db 0eah			; will be translated to jmp
+; Old10Offset:	dw 0000h		; this part will be modified
+; Old10Seg:	dw 0000h		; to jmp OldSeg:OldOffset
+; 
+; @@SkipInt:
+; 		push ax
+; 		mov al, 20h
+; 		out 20h, al		; sends EOI to interrupt controller
+; 		pop ax
+; 
+; 		sti
+; 
+; 		iret
+; 		endp
+
+;===============================================================================
 ; TripleBuffering
 ;
 ; Keeps up-to-date screen status and updates if any changes happening
@@ -272,7 +315,7 @@ TripleBuffering	proc			; updates frame, so it is always on top
 		sti
 
 		db 0eah			; will be translated to jmp
-Old08Offset:	dw 0000h		; this part will be modificated
+Old08Offset:	dw 0000h		; this part will be modified
 Old08Seg:	dw 0000h		; to jmp OldSeg:OldOffset
 
 		iret
