@@ -11,6 +11,8 @@ org 100h
 
 locals @@
 
+update_frequency = 1			; how many ticks are skipped for next
+					; frame update
 activation_key_scan_code = 15d
 frame_height = 15			; height of frame
 frame_width = 11 			; width of frame
@@ -28,6 +30,36 @@ CopyStr		macro
 		loop @@DisplayLoop
 
 		endm
+
+
+
+FreezeRegs	macro			; saves all register values before INT
+
+		; when int happens Flags, CS, IP are pushed in stack
+		; so SP is decremented by 6 as pushed regs are 2 bytes each
+
+		push ax				; saves ax
+		mov ax, sp
+		add ax, 8			; 3 int pushes + ax push
+		mov cs:[SavedSP], ax		; saves original sp
+
+		push bx cx dx si di bp ds es ss	ax	; saves other regs
+						; ax <=> sp
+
+		; registers are stored in this order: 
+		; [old] Flags, CS, IP, AX, BX, CX, DX, SI, DI, BP, DS, ES, SS
+		; <---------------- SP grows in this direction ----------------
+		; ^SP^ = SavedSP
+
+		endm
+
+
+UnfreezeRegs	macro			; restores previous register values
+		
+		pop ax ss es ds bp di si dx cx bx ax
+
+		endm
+
 
 ;-------------------------------------------------------------------------------
 
@@ -67,7 +99,7 @@ Start:
 		inc dx			; dx stores memory in paragraphs
 		int 21h
 
-
+TickCounter	db 0
 SavedSP		dw 0			; saved value of sp
 FrameDisplay	db 0			; 0 - if frame not shown, 1 - overwise
 Color_Attr	db 4eh			; color of frame
@@ -116,22 +148,7 @@ SetHandler	proc
 ResidentMain	proc
 		cli
 
-
-		; when int happens Flags, CS, IP are pushed in stack
-		; so SP is decremented by 6 as pushed regs are 2 bytes each
-
-		push ax				; saves ax
-		mov ax, sp
-		add ax, 8			; 3 int pushes + ax push
-		mov cs:[SavedSP], ax		; saves original sp
-
-		push bx cx dx si di bp ds es ss	ax	; saves other regs
-						; ax <=> sp
-
-		; registers are stored in this order: 
-		; [old] Flags, CS, IP, AX, BX, CX, DX, SI, DI, BP, DS, ES, SS
-		; <---------------- SP grows in this direction ----------------
-		; ^SP^ = SavedSP
+		FreezeRegs
 
 		mov ax, cs
 		mov ds, ax
@@ -178,7 +195,7 @@ ResidentMain	proc
 		mov FrameDisplay, 0
 
 @@Ret:
-		pop ax ss es ds bp di si dx cx bx ax
+		UnfreezeRegs
 
 		sti
 
@@ -234,10 +251,9 @@ CmpKeystroke	proc
 ;-------------------------------------------------------------------------------
 
 TripleBuffering	proc			; updates frame, so it is always on top
+		cli			; and has relevant information
 					; triple buffering makes everything 
-		cli			; behind frame up-to-date
-
- 		push ax bx cx es ds si di dx
+		FreezeRegs		; behind frame up-to-date
 
 		mov ax, cs
 		mov ds, ax
@@ -247,9 +263,11 @@ TripleBuffering	proc			; updates frame, so it is always on top
 
 		mov ax, 0b800h
 		mov es, ax
-		call UpdateBuffer
+		call UpdateBuffer	; updates save buffer 
 
- @@SkipUpdate:	pop dx di si ds es cx bx ax
+		call UpdateFrame	; updates frame info
+
+ @@SkipUpdate:	UnfreezeRegs
 
 		sti
 
@@ -389,6 +407,42 @@ UpdateBuffer	proc
 		endp
 
 ;===============================================================================
+; UpdateFrame
+;
+; Updates frame info once in [update_frequency] ticks
+; Entry:     ES - video memory segment
+;	     DS - data segment
+; Exit:      -
+; Expected:  -
+; Destroyed: DI, SI, CX, AX, BX, BP
+;-------------------------------------------------------------------------------
+
+UpdateFrame	proc
+
+		cmp TickCounter, update_frequency
+		je @@Update
+
+		inc TickCounter
+		ret
+
+@@Update:
+		xor al, al
+		mov TickCounter, al
+
+		push es			; saves es
+		push ds
+		pop es			; es = ds
+		call DrawFrame		; draws frame in DrawBuffer
+
+		pop es			; restores es
+		mov di, (80d * frame_y + frame_x) * 2
+		mov si, offset DrawBuffer
+		call FlushBuffer	; outputs DrawBuffer in frame
+
+		ret
+		endp
+
+;===============================================================================
 ; DrawFrame
 ;
 ; Draws frame in buffer
@@ -407,25 +461,26 @@ DrawFrame	proc
 
 		call DrawHBorder	; draws horizontal top border
 
-		mov cx, 13
+		mov cx, 13		; 13 registers will be displayed
 		mov si, offset RegString
 		mov bp, offset RegOffsets
 
 @@DisplayLoop:
 		push cx
 		push si
-		mov bx, SavedSP
-		xor ax, ax
-		mov al, byte ptr cs:[bp]
-		sub bx, ax
+
+		mov bx, SavedSP			; bx = SavedSP
+		xor ax, ax		
+		mov al, byte ptr cs:[bp]	; al = 1 byte from cs:[bp] 
+		sub bx, ax			; bx = pos of 1st reg
 		
 		call ShowReg
 
 		pop si
 		pop cx
 
-		add si, 4
-		inc bp
+		add si, 4		; next reg name string
+		inc bp			; next reg offset
 		loop @@DisplayLoop
 
 
